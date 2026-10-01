@@ -1,0 +1,87 @@
+name: Extract Xray (amd64 only)
+
+# 定时跟随上游 XTLS/Xray-core 最新版，CI 侧解压 zip，
+# 将裸二进制发布到本仓库 Release Assets，供小内存机器直下（免 unzip）。
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Upstream Xray-core tag (e.g. v26.7.28, empty = latest)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve upstream version
+        id: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            TAG="${{ inputs.version }}"
+          else
+            TAG="$(gh api repos/XTLS/Xray-core/releases/latest --jq .tag_name)"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Upstream tag: $TAG"
+
+      - name: Skip if release already exists
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          OUR_TAG="xray-${{ steps.upstream.outputs.tag }}"
+          if gh api "repos/${{ github.repository }}/releases/tags/$OUR_TAG" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release $OUR_TAG already exists, skipping."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download and verify upstream zip
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          set -euo pipefail
+          UPSTREAM_TAG="${{ steps.upstream.outputs.tag }}"
+          ZIP="Xray-linux-64.zip"
+          curl -fL -H 'Cache-Control: no-cache' -o "$ZIP" \
+            "https://github.com/XTLS/Xray-core/releases/download/$UPSTREAM_TAG/$ZIP"
+          curl -fL -H 'Cache-Control: no-cache' -o "$ZIP.dgst" \
+            "https://github.com/XTLS/Xray-core/releases/download/$UPSTREAM_TAG/$ZIP.dgst"
+          CHECKSUM="$(awk -F '= ' '/256=/ {print $2}' "$ZIP.dgst")"
+          echo "$CHECKSUM  $ZIP" | sha256sum -c -
+
+      - name: Extract bare binaries (amd64 only)
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          set -euo pipefail
+          rm -rf extracted && mkdir -p extracted
+          unzip -o Xray-linux-64.zip -d extracted/
+          chmod +x extracted/xray
+          ls -l extracted/
+          ./extracted/xray version || ./extracted/xray -version || true
+          echo "${{ steps.upstream.outputs.tag }}" > extracted/version
+          ( cd extracted && sha256sum xray > xray.sha256 )
+          ( cd extracted && sha256sum geoip.dat > geoip.dat.sha256 )
+          ( cd extracted && sha256sum geosite.dat > geosite.dat.sha256 )
+
+      - name: Publish to Release Assets
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          OUR_TAG="xray-${{ steps.upstream.outputs.tag }}"
+          gh release create "$OUR_TAG" \
+            --title "Xray ${{ steps.upstream.outputs.tag }} (amd64, pre-extracted)" \
+            --notes "Pre-extracted from upstream XTLS/Xray-core ${{ steps.upstream.outputs.tag }} (Xray-linux-64.zip). Assets are bare files for low-memory installs without unzip." \
+            extracted/xray extracted/geoip.dat extracted/geosite.dat \
+            extracted/xray.sha256 extracted/geoip.dat.sha256 extracted/geosite.dat.sha256 \
+            extracted/version
