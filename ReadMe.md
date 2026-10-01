@@ -13,36 +13,11 @@ Alpine Linux 用的 Xray 安装脚本，改自 [XTLS/Xray-install](https://githu
 - 必须以 root 运行
 - 需要能直连 `github.com`（Release 直链 + OpenRC service 文件均托管在 GitHub）
 
-## 前置依赖
-
-脚本只需要 `curl`，缺失时会自动 `apk add curl`。但注意：下载本脚本本身就需要先有 `curl` 或 `wget`，
-所以全新系统上请先手动 `apk add curl`（见下文使用方法）。其余均为 Alpine 默认自带：
-
-| 依赖 | 用途 | 说明 |
-| --- | --- | --- |
-| `curl` | 下载二进制与 service 文件 | 缺失时自动安装 |
-| `sha256sum` | 校验下载文件 | busybox 自带 |
-| `pgrep` | 检测 xray 是否在运行 | busybox 自带 |
-| `openrc`（`rc-service` / `rc-update`） | 注册与启停服务 | 缺失则报错退出，需手动安装 |
-| `ash`、`awk`、`mktemp`、`install` | 脚本自身 | busybox/coreutils 自带 |
-
-注意：脚本不再需要 `unzip`。
-
 ## 使用方法
-
-先把脚本下载到机器上（Alpine 刚装好可能既没有 `curl` 也没有 `wget`，先装一个）：
 
 ```sh
 apk add curl
 curl -fL -O https://raw.githubusercontent.com/bbw3000/Xray-AlpineInstall/main/install-release.sh
-# 或者用 wget：
-# apk add wget
-# wget https://raw.githubusercontent.com/bbw3000/Xray-AlpineInstall/main/install-release.sh
-```
-
-然后以 root 执行：
-
-```sh
 ash install-release.sh
 ```
 
