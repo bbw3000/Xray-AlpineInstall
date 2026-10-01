@@ -61,3 +61,38 @@ REPO=你的用户名/Xray-AlpineInstall ash install-release.sh
 脚本始终从 `releases/latest/download` 取最新版，因此服务端无需任何操作即可跟随上游。
 
 上游发版后想立即同步，或想补发某个旧版本，可去 Actions 页手动触发 `Extract Xray`，在 `version` 输入框填上游 tag（如 `v26.3.27`），留空则取最新。
+
+## 故障排查
+
+### `rc-service xray start` 报 `unable to apply RC_ULIMIT settings`
+
+上游 service 文件（`/etc/init.d/xray`）里写了 `rc_ulimit="-n 1024000 -u 1024000"`，
+在受限容器 / 小 VPS 里没有调高 hard limit 的权限就会报这个错。
+已核对 OpenRC 源码：`apply_ulimits` 失败只打印错误、不中断启动，所以它本身不致命，
+但会刷屏；前两行的 `machine-id needs dev` / `networking needs hostname` 也是精简环境的无害警告。
+
+确认服务到底起没起来：
+
+```sh
+rc-service xray status
+```
+
+如果看着烦，去掉该行即可（小内存机器也用不上百万 fd）：
+
+```sh
+sed -i 's/^rc_ulimit=.*/#rc_ulimit=/' /etc/init.d/xray
+rc-service xray restart
+```
+
+注意：init 脚本只在不存在时才下载，已有则不动，所以这次改完不会被安装脚本覆盖。
+
+### 起不来时按序查
+
+```sh
+rc-service xray status
+cat /var/log/xray/error.log
+XRAY_LOCATION_ASSET=/usr/local/share/xray/ /usr/local/bin/xray run -confdir /usr/local/etc/xray/ -test
+```
+
+配置测试报错就修 `/usr/local/etc/xray/*.json`；若出现 capabilities 相关错误，
+把 `/etc/init.d/xray` 里 `capabilities=` 那行也注释掉（无特权容器不支持 capability 升降）。
