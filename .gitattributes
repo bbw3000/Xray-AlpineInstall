@@ -1,0 +1,4 @@
+# Shell 脚本与 OpenRC service 文件必须 LF 换行，CRLF 会导致 Alpine 上无法执行
+*.sh text eol=lf
+init.d/xray text eol=lf
+*.yml text eol=lf
