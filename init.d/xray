@@ -1,0 +1,33 @@
+#!/sbin/openrc-run
+
+name="Xray"
+description="Xray Proxy Service"
+supervisor=supervise-daemon
+respawn_delay=5
+respawn_max=3
+respawn_period=60
+
+command="/usr/local/bin/xray"
+confdir=${confdir:-"/usr/local/etc/xray/"}
+command_args="run -confdir $confdir"
+pidfile="/run/${RC_SVCNAME}.pid"
+output_log="/var/log/xray/openrc.log"
+error_log="/var/log/xray/openrc.err"
+export XRAY_LOCATION_ASSET="/usr/local/share/xray"
+extra_commands="checkconfig"
+
+depend() {
+    need net
+    after firewall
+}
+
+checkconfig() {
+	$command $command_args -test
+	eend $?
+}
+
+start_pre() {
+    checkpath -d -m 0755 -o root:root /var/log/xray
+    checkpath -f -m 0644 -o root:root "$output_log" "$error_log"
+    checkconfig
+}

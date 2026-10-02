@@ -45,7 +45,7 @@ REPO=你的用户名/Xray-AlpineInstall ash install-release.sh
 - `/usr/local/share/xray/geoip.dat`、`geosite.dat` — 路由数据
 - `/usr/local/etc/xray/*.json` — 分片空配置（仅首次安装时生成，已有则不动）
 - `/var/log/xray/access.log`、`error.log` — 日志（属主 `nobody`）
-- `/etc/init.d/xray` — OpenRC 服务（取自上游 Xray-install 仓库）
+- `/etc/init.d/xray` — OpenRC 服务（本仓库 `init.d/xray`，以 root 运行，无 ulimit / capabilities 限制，supervise 输出记到 `/var/log/xray/openrc.log`）
 
 卸载依赖提示：装完后如需清理，可执行脚本末尾输出的 `apk del curl`（确认无其他程序依赖 `curl` 再删）。
 
@@ -66,25 +66,23 @@ REPO=你的用户名/Xray-AlpineInstall ash install-release.sh
 
 ### `rc-service xray start` 报 `unable to apply RC_ULIMIT settings`
 
-上游 service 文件（`/etc/init.d/xray`）里写了 `rc_ulimit="-n 1024000 -u 1024000"`，
+这是上游官方 service 文件（`/etc/init.d/xray`）里 `rc_ulimit="-n 1024000 -u 1024000"` 导致的，
 在受限容器 / 小 VPS 里没有调高 hard limit 的权限就会报这个错。
-已核对 OpenRC 源码：`apply_ulimits` 失败只打印错误、不中断启动，所以它本身不致命，
-但会刷屏；前两行的 `machine-id needs dev` / `networking needs hostname` 也是精简环境的无害警告。
+本仓库自带的 `init.d/xray` 已去掉该行（以及 `command_user`、`capabilities` 限制），改 root 运行，
+新安装不会再遇到。前两行的 `machine-id needs dev` / `networking needs hostname` 是精简环境的无害警告。
 
-确认服务到底起没起来：
-
-```sh
-rc-service xray status
-```
-
-如果看着烦，去掉该行即可（小内存机器也用不上百万 fd）：
+如果你是之前用上游 service 文件装的老机器，任选其一：
 
 ```sh
+# 方法一：换成本仓库的 service 文件（推荐）
+rm /etc/init.d/xray
+curl -fL -o /etc/init.d/xray https://raw.githubusercontent.com/bbw3000/Xray-AlpineInstall/main/init.d/xray
+chmod 755 /etc/init.d/xray
+rc-service xray restart
+# 方法二：只注释掉 ulimit 行
 sed -i 's/^rc_ulimit=.*/#rc_ulimit=/' /etc/init.d/xray
 rc-service xray restart
 ```
-
-注意：init 脚本只在不存在时才下载，已有则不动，所以这次改完不会被安装脚本覆盖。
 
 ### 起不来时按序查
 
@@ -94,5 +92,4 @@ cat /var/log/xray/error.log
 XRAY_LOCATION_ASSET=/usr/local/share/xray/ /usr/local/bin/xray run -confdir /usr/local/etc/xray/ -test
 ```
 
-配置测试报错就修 `/usr/local/etc/xray/*.json`；若出现 capabilities 相关错误，
-把 `/etc/init.d/xray` 里 `capabilities=` 那行也注释掉（无特权容器不支持 capability 升降）。
+配置测试报错就修 `/usr/local/etc/xray/*.json`。
